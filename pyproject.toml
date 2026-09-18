@@ -1,0 +1,21 @@
+[project]
+name = "discord-ip-bot"
+version = "0.1.0"
+description = "Dicord Bot which reports public ip of a host it resides on"
+readme = "README.md"
+authors = [
+    { name = "igla", email = "cjagielski@pm.me" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "debugpy>=1.8.22",
+    "discord-py>=2.7.1",
+    "dotenv>=0.9.9",
+]
+
+[project.scripts]
+discord-ip-bot = "discord_ip_bot:main"
+
+[build-system]
+requires = ["uv_build>=0.12.15,<0.13.0"]
+build-backend = "uv_build"
