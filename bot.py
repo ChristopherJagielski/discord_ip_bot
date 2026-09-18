@@ -41,6 +41,7 @@ def validate_config() -> None:
 class IPBot(discord.Client):
     def __init__(self) -> None:
         intents = discord.Intents.default()
+        intents.message_content = True  # required to read message.content
         super().__init__(intents=intents)
         self.tree = app_commands.CommandTree(self)
         self.current_ip: str | None = None  # in-memory storage of the last known IP
