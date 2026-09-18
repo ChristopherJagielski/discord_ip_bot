@@ -2,6 +2,7 @@ import asyncio
 import contextlib
 import logging
 import os
+import re
 import signal
 
 import aiohttp
@@ -22,6 +23,8 @@ IPIFY_URL = "https://api.ipify.org"
 # Channel to pin IP-change announcements to (falls back to the command's channel).
 IP_CHANNEL_ID = os.getenv("IP_CHANNEL_ID")
 HTTP_TIMEOUT = aiohttp.ClientTimeout(total=10)
+# Matches "currentip", "current ip", "serverip", "server ip", etc. (case-insensitive).
+IP_TRIGGER_RE = re.compile(r"\b(current|server|serwer)\s*ip\b", re.IGNORECASE)
 
 
 def validate_config() -> None:
@@ -42,18 +45,24 @@ class IPBot(discord.Client):
         self.tree = app_commands.CommandTree(self)
         self.current_ip: str | None = None  # in-memory storage of the last known IP
 
+    async def _fetch_ip(self) -> str | None:
+        try:
+            async with aiohttp.ClientSession(timeout=HTTP_TIMEOUT) as session:
+                async with session.get(IPIFY_URL) as resp:
+                    resp.raise_for_status()
+                    return (await resp.text()).strip()
+        except Exception:
+            log.warning("Failed to fetch public IP.")
+            return None
+
     async def setup_hook(self) -> None:
         # Register the /currentip command.
         @self.tree.command(name="currentip", description="Show the bot's public IP address")
         async def currentip(interaction: discord.Interaction) -> None:
             await interaction.response.defer()
 
-            try:
-                async with aiohttp.ClientSession(timeout=HTTP_TIMEOUT) as session:
-                    async with session.get(IPIFY_URL) as resp:
-                        resp.raise_for_status()
-                        ip = (await resp.text()).strip()
-            except Exception:
+            ip = await self._fetch_ip()
+            if ip is None:
                 await interaction.followup.send(
                     "Sorry, I couldn't fetch the public IP right now.", ephemeral=True
                 )
@@ -104,6 +113,18 @@ class IPBot(discord.Client):
             # only counts members present in the local cache.
             log.info("  - %s (ID: %s, ~%s members)", guild.name, guild.id, guild.approximate_member_count)
         log.info("Bot is ready.")
+        self.current_ip = await self._fetch_ip()
+
+    async def on_message(self, message: discord.Message) -> None:
+        # Ignore messages sent by the bot itself.
+        if message.author == self.user:
+            return
+        if message.channel is None:
+            return
+        log.info("Message from %s: %s", message.author, message.content)
+        if IP_TRIGGER_RE.search(message.content):
+            ip = await self._fetch_ip()
+            await message.channel.send(f"Public IP: `{ip or 'unknown'}`")
 
     async def on_close(self) -> None:
         """Called when the connection is closing — log a clean shutdown."""
